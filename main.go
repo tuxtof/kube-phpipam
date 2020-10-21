@@ -215,11 +215,11 @@ func main() {
 				*/
 
 				if subnet.Namespace != "" && svc.Namespace != subnet.Namespace {
-					//log.Infof("skipping because of wrong namespace")
+					log.Infof("skipping because of wrong namespace")
 					continue
 				}
 				if subnet.Type != "" && svc.Spec.Type != subnet.Type {
-					//log.Infof("skipping because of wrong type")
+					// log.Infof("skipping because of wrong type: %s %s", subnet.Type , svc.Spec.Type)
 					continue
 				}
 				if subnet.Regex != "" {
@@ -229,7 +229,7 @@ func main() {
 						continue
 					}
 					if !re.MatchString(svc.Name) {
-						//log.Infof("skipping because of regex")
+						log.Infof("skipping because of regex")
 						continue
 					}
 				}
@@ -245,28 +245,40 @@ func main() {
 					log.Errorf("Subnet matching %s not found in phpIPAM: %v", subnet.CIDR, err)
 					continue
 				}
-				//log.Infof("phpIPAM subnet: %+v", ipamSubnet)
+				log.Infof("phpIPAM subnet: %+v", ipamSubnet)
 
 				var ips []string
 				appendip := func(ip string) {
+					// log.Infof("try to validate %s", ip)
 					if ip != "" && ipnet.Contains(net.ParseIP(ip)) {
 						ips = append(ips, ip)
+					} else {
+						// log.Infof("ip %s not validated", ip)
 					}
 				}
+
+				// log.Infof("ip search in: %s | %s | %s | %s", svc.Spec.LoadBalancerIP, svc.Spec.ClusterIP, svc.Spec.ExternalIPs, svc.Status.LoadBalancer.Ingress)
+
 				appendip(svc.Spec.LoadBalancerIP)
 				appendip(svc.Spec.ClusterIP)
 				for _, ip := range svc.Spec.ExternalIPs {
 					appendip(ip)
 				}
+				for _, ip := range svc.Status.LoadBalancer.Ingress {
+					appendip(ip.IP)
+				}
+
+				log.Infof("ips content: %s", ips)
 
 				for _, ip := range ips {
 					var res phpipam.IPAddressResponse
 					url := fmt.Sprintf("addresses/search/%s/", ip)
-					//log.Infof("Looking for phpipam matching address: %s", url)
+					log.Infof("Looking for phpipam matching address: %s", url)
 					if err := client.GET(url, &res); err != nil {
 						log.Errorf("%v", err)
 						continue
 					}
+
 					if res.Code != 200 {
 						log.Infof("IP address %s not found in phpIPAM, adding to subnet %s with hostname %s", ip, ipamSubnet.ID, hostname)
 						if err := createIP(client, ipamSubnet.ID, ip, hostname, description); err != nil {
@@ -274,8 +286,13 @@ func main() {
 						}
 						continue
 					}
-
+					log.Infof("search Data: %s len %s", res.Data, len(res.Data))
 					var change bool
+
+					// if len(res.Data) == 0 {
+					// 	change = true
+					// }
+
 					for _, foundIP := range res.Data {
 						if foundIP.Hostname == nil {
 							change = true
@@ -295,7 +312,7 @@ func main() {
 						}
 					}
 					if !change {
-						//log.Infof("IP %s already has the right allocation in phpipam", ip)
+						log.Infof("IP %s already has the right allocation in phpipam", ip)
 						ipCache[ip] = hostname
 						continue
 					}

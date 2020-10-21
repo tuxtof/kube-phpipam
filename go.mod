@@ -1,5 +1,7 @@
 module github.com/dparrish/kube-phpipam
 
+go 1.15
+
 require (
 	github.com/spotahome/kooper v0.5.1
 	gopkg.in/yaml.v2 v2.2.1
